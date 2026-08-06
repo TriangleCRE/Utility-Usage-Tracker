@@ -81,6 +81,9 @@ svg circle.hit{cursor:pointer}
 .t-burst{background:var(--alertbg);color:var(--alert)}
 .t-quiet{background:var(--warnbg);color:var(--warn)}
 .t-ended{background:#EEF1F4;color:var(--muted)}
+.att-tag.flagjump{cursor:pointer}
+.att-tag.flagjump:hover{box-shadow:inset 0 0 0 1px currentColor}
+.att-tag.resolved-row{opacity:.55}
 .att-fig{font-family:var(--mono);font-size:12px;color:var(--muted);text-align:right;min-width:120px}
 .mini{appearance:none;border:1px solid var(--line);background:var(--panel);border-radius:7px;padding:4px 9px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;white-space:nowrap}
 .mini:hover{border-color:var(--muted);color:var(--ink)}
@@ -139,6 +142,8 @@ table.data th .ar{color:var(--faint);font-size:10px}
 table.data td{padding:6px 12px;border-bottom:1px solid var(--line2);white-space:nowrap}
 table.data td.num{font-family:var(--mono);text-align:right;font-variant-numeric:tabular-nums}
 table.data tr:hover td{background:#F7FAFB}
+tr.rowflash td{animation:rowflash 1.6s ease-out}
+@keyframes rowflash{0%,55%{background:#EAF4EE}100%{background:transparent}}
 .pill{display:inline-block;width:9px;height:9px;border-radius:50%;vertical-align:middle}
 .utcell{display:inline-flex;align-items:center;gap:7px}
 .pn-link{color:var(--brand-ink);cursor:pointer;font-weight:600}
@@ -544,6 +549,12 @@ function ymFromIdx(i){return(Math.floor(i/12))+'-'+String(i%12+1).padStart(2,'0'
 
 /* ---------- property detail ---------- */
 let currentTab='overview',currentProp=null;
+// Which resolve-list a given flag kind belongs to: burst/quiet/ended mirror the Attention tab,
+// gaps/sparse mirror the Data-quality tab — same ids those tabs use, so resolving stays in sync.
+function flagResId(kind,s){return(kind==='gaps')?'dq§gaps§'+s.key:(kind==='sparse')?'dq§sparse§'+s.key:'att§'+s.key;}
+// Which reading row a flag pill should jump to: the peak month for spikes, the most recent
+// reading for everything else (quiet/ended/gaps/sparse all hinge on the latest reading).
+function flagJumpYm(kind,s){return kind==='burst'?s.peakYm:s.last;}
 function openProperty(base){
   currentProp=base;
   const ser=SERIES.filter(s=>s.base===base);
@@ -552,7 +563,13 @@ function openProperty(base){
   const addr=ser.find(s=>s.addr)?.addr||'';
   const utils=[...new Set(ser.map(s=>s.util))];
   const months=recs.map(r=>r.ym).sort();
-  const flags=ser.flatMap(s=>{const f=[];if(s.flags.includes('burst'))f.push([s.leak?'Possible leak':'Usage spike',s.leak?'burst':'burst',s]);if(s.flags.includes('quiet'))f.push(['Went quiet','quiet',s]);if(s.flags.includes('ended'))f.push(['Account closed','ended',s]);if(s.flags.includes('gaps'))f.push([s.gaps+' gap(s)','ended',s]);if(s.flags.includes('sparse'))f.push(['Thin ('+s.n+')','ended',s]);return f;});
+  const flags=ser.flatMap(s=>{const f=[];
+    if(s.flags.includes('burst'))f.push({lab:s.leak?'Possible leak':'Usage spike',cls:'burst',kind:'burst',s});
+    if(s.flags.includes('quiet'))f.push({lab:'Went quiet',cls:'quiet',kind:'quiet',s});
+    if(s.flags.includes('ended'))f.push({lab:'Account closed',cls:'ended',kind:'ended',s});
+    if(s.flags.includes('gaps'))f.push({lab:s.gaps+' gap(s)',cls:'ended',kind:'gaps',s});
+    if(s.flags.includes('sparse'))f.push({lab:'Thin ('+s.n+')',cls:'ended',kind:'sparse',s});
+    return f;});
   const noteVal=STATE.notes[base]||'';
   let html=`<div class="pv-head">
       <button class="btn sub back" id="pvBack">← Back</button>
@@ -564,7 +581,12 @@ function openProperty(base){
       <div class="pv-stat"><div class="v">${months.length?monLabel(months[0])+'–'+monLabel(months[months.length-1]):'—'}</div><div class="l">Span</div></div>
       <div class="pv-stat"><div class="v" style="color:${flags.length?'var(--warn)':'var(--brand-ink)'}">${flags.length||'None'}</div><div class="l">Flags</div></div>
     </div>`;
-  if(flags.length)html+=`<div class="card" style="margin-bottom:16px"><div style="padding:12px 16px;display:flex;flex-wrap:wrap;gap:8px;align-items:center"><span class="hint" style="font-weight:600;color:var(--ink);margin-right:6px">Flags:</span>${flags.map(f=>`<span class="att-tag t-${f[1]}">${f[0]} · ${f[2].util}</span>`).join('')}</div></div>`;
+  if(flags.length)html+=`<div class="card" style="margin-bottom:16px"><div style="padding:12px 16px;display:flex;flex-wrap:wrap;gap:10px;align-items:center"><span class="hint" style="font-weight:600;color:var(--ink);margin-right:2px">Flags:</span>${flags.map(f=>{
+    const id=flagResId(f.kind,f.s),res=STATE.resolved[id],jumpYm=flagJumpYm(f.kind,f.s),jumpKey=f.s.key+'§'+jumpYm;
+    return `<span class="flagset" style="display:inline-flex;align-items:center;gap:6px">
+      <span class="att-tag t-${f.cls} flagjump ${res?'resolved-row':''}" data-jump="${esc(jumpKey)}" title="Jump to ${esc(monLabel(jumpYm))} in the readings below">${esc(f.lab)} · ${f.s.util}</span>
+      <button class="mini ${res?'done':''}" data-res="${esc(id)}" title="${res?'Resolved'+(res.note?': '+esc(res.note):'')+' — click to reopen':'Mark resolved'}">${res?'✓ Resolved':'Resolve'}</button>
+    </span>`;}).join('')}</div></div>`;
   html+=`<div class="sec-h"><h2>Team notes</h2><span class="note">Shared notes for this property — saved on this device</span><span class="spacer"></span><span class="saveflash" id="pvNoteFlash">Saved ✓</span></div>
     <textarea class="notesbox" id="pvNotes" placeholder="Add notes for the team — e.g. 'plumber checked 802 Richmond 5/12, no visible leak', 'tenant moved out Feb', 'confirm 153 Crown load with Danville'…">${esc(noteVal)}</textarea>`;
   html+=`<div class="sec-h"><h2>Usage by meter</h2><span class="note">Each service point over time · click a chart to expand it</span></div><div class="charts">`+
@@ -572,7 +594,7 @@ function openProperty(base){
   html+=`<div class="sec-h"><h2>Readings</h2><span class="note">Click a value to edit — updates every chart and the reading log</span></div>
     <div class="tablewrap"><table class="data"><thead><tr><th>Meter</th><th>Utility</th><th>Unit</th><th>Month</th><th>Value</th><th>Flag</th></tr></thead><tbody>`+
     recs.map(r=>{const s=SERIES.find(x=>x.key===seriesKey(r));const fl=s&&s.anom.has(r.ym)?`<span class="flagchip" data-tip="${esc(spikeReason(s,r))}" title="${esc(spikeReason(s,r))}">⚑</span>`:'';
-      return `<tr><td>${esc(r.prop)}</td><td><span class="utcell"><span class="pill" style="background:${U_COLOR[r.util]}"></span>${r.util}</span></td><td>${r.unit}</td><td class="mono">${monLabel(r.ym)}</td><td class="num">${valCell(r)}</td><td>${fl}</td></tr>`;}).join('')+
+      return `<tr data-rk="${esc(recKey(r))}"><td>${esc(r.prop)}</td><td><span class="utcell"><span class="pill" style="background:${U_COLOR[r.util]}"></span>${r.util}</span></td><td>${r.unit}</td><td class="mono">${monLabel(r.ym)}</td><td class="num">${valCell(r)}</td><td>${fl}</td></tr>`;}).join('')+
     `</tbody></table></div>`;
   const pv=document.getElementById('propview');pv.innerHTML=html;
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('on'));
@@ -613,9 +635,20 @@ document.addEventListener('click',e=>{
 document.addEventListener('click',e=>{
   const rb=e.target.closest('[data-res]');
   if(rb){e.stopPropagation();const id=rb.dataset.res;
-    if(STATE.resolved[id]){delete STATE.resolved[id];saveState();renderAttention();renderFlagsNotes();renderHead();return;}
-    showModal({title:'Resolve this flag?',html:'<p>Mark it resolved so it drops off the list. Add an optional note for the team.</p>',input:{placeholder:'Optional note (e.g. plumber checked, no leak)'},confirmLabel:'Resolve',onConfirm:(note)=>{STATE.resolved[id]={note:note||'',ts:Date.now()};saveState();renderAttention();renderFlagsNotes();toast('Flag resolved');}});
+    if(STATE.resolved[id]){delete STATE.resolved[id];saveState();renderAttention();renderFlagsNotes();renderHead();if(currentProp)openProperty(currentProp);return;}
+    showModal({title:'Resolve this flag?',html:'<p>Mark it resolved so it drops off the list. Add an optional note for the team.</p>',input:{placeholder:'Optional note (e.g. plumber checked, no leak)'},confirmLabel:'Resolve',onConfirm:(note)=>{STATE.resolved[id]={note:note||'',ts:Date.now()};saveState();renderAttention();renderFlagsNotes();if(currentProp)openProperty(currentProp);toast('Flag resolved');}});
     return;}
+});
+/* ---------- jump from a property's flag pill to its reading ---------- */
+document.addEventListener('click',e=>{
+  const fj=e.target.closest('.flagjump');
+  if(!fj)return;
+  e.stopPropagation();
+  const key=fj.dataset.jump;
+  const row=[...document.querySelectorAll('#propview tr[data-rk]')].find(tr=>tr.dataset.rk===key);
+  if(!row){toast('That reading is out of view.');return;}
+  row.scrollIntoView({behavior:'smooth',block:'center'});
+  row.classList.remove('rowflash');void row.offsetWidth;row.classList.add('rowflash');
 });
 /* open property from clickable rows/cards (but not when clicking a button/value/input) */
 document.addEventListener('click',e=>{

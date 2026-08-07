@@ -1,0 +1,61 @@
+{
+  "takeaways": [
+    {
+      "util": "Electric",
+      "title": "Genuine leaks/vampires hide in low-baseline meters",
+      "body": "The meters worth acting on are ones that normally sit near zero and suddenly spike: Habitat Warehouse Building (26\u2192653 kWh, 25\u00d7), Tire Mart #5 (10\u00d7), Pantops #102 (176\u00d7). Big summer-AC / winter-heat swings on already-large meters are seasonal and expected."
+    },
+    {
+      "util": "Water",
+      "title": "Two live water-leak signatures on the City of Staunton side",
+      "body": "802 Richmond spiked to 41 HCF from a 0\u20131 baseline in May 2026 \u2014 the city printed a 'possible leak' notice on the bill. Genesis (823 Richmond) shows 180 & 121 HCF in mid-2023 vs a 3\u20134 baseline. Both are worth a physical check."
+    },
+    {
+      "util": "Gas",
+      "title": "Gas peaks are seasonal \u2014 read them as heating, not anomalies",
+      "body": "Every gas meter peaks in winter (heating) and falls to near-zero in summer. Those 3\u201320\u00d7 winter ratios are normal. The one real gas story is Charlottesville's Flow Center Lot, whose usage collapsed from ~16\u201320k cu.ft/mo in 2023 to near-zero by 2024."
+    },
+    {
+      "util": "Electric",
+      "title": "Several accounts closed or went vacant mid-window",
+      "body": "2655 S Main dropped to 0 kWh in spring 2026 (vacant). SVEC center, Pantops, Woodstock, and Shops at Waynesboro accounts closed ~Jan 2026. These flat-line drops are account closures, not meter failures."
+    }
+  ],
+  "quality": [
+    {
+      "sev": "info",
+      "title": "Different utilities use different units \u2014 never sum across them",
+      "body": "Water is HCF (Staunton) and CCF (Danville) \u2014 those are equivalent (hundred cubic feet). Gas arrives in three units: CCF, Therms, and raw Cu.Ft. Electric is kWh throughout. Charts and tables keep each series in its own unit; totals are never mixed across units."
+    },
+    {
+      "sev": "info",
+      "title": "Some properties have multiple meters",
+      "body": "Heritage (elec #A/#B), Tire Mart (House + #5), Pantops (House + suites 102/107/108), and the Habitat warehouse each carry more than one service point. They appear as separate rows/series so a small tenant meter doesn't hide behind a large one."
+    },
+    {
+      "sev": "warn",
+      "title": "Coverage is uneven by design \u2014 utilities come from different vendors",
+      "body": "A property only shows a utility if that utility is billed through a vendor we pulled. Water = City of Staunton only; most electric = Dominion VA; gas = Columbia/Danville/Charlottesville. So a Staunton property may have water+electric but no gas simply because it has no gas service \u2014 the coverage grid below distinguishes 'no service' from 'not yet pulled'."
+    },
+    {
+      "sev": "warn",
+      "title": "Flow properties were relabeled to match the directory",
+      "body": "1289 Stony Point was mislabeled 'Flow Center Lot' and is now correctly 'Flow Corner' (Yardi had renamed the property mid-stream; same physical meter). Flow Center Lot (1311) has no Dominion electric meter \u2014 it is gas-only."
+    }
+  ],
+  "recon": [
+    "Reconciliation notes (added 2026-08-06):",
+    "Flow properties per property directory: Flow Corner = 1289 Stony Point Rd \u00b7 Flow Center Lot = 1311 Stony Point Rd \u00b7 Flow Back Lot = 1321 Stony Point Rd.",
+    "Flow Corner (1289): outside-lights meter, Dominion acct 002898924267 \u2014 full series above (relabeled from \"Flow Center Lot (lights)\"). The separate 1289 main-building electric meter closed 2024-07-01 (final bill); not tracked.",
+    "Flow Center Lot (1311): NO Dominion electric meter in vendor ledger 10456 \u2014 this lot is gas-only (see Charlottesville Gas sheet). No electric series to add; nothing missing.",
+    "Flow Back Lot (1321): correctly labeled. Dominion acct 210022720283 \u2014 intermittent (closing bill 2024-11, reopened 2026-03).",
+    "Wells Property/Bookstore (707A Richmond Ave): CLOSED accounts \u2014 Dominion electric final invoice 2024-01-04 (3 bills, late 2023), Columbia gas final 2023-12-21 (3 bills). No active usage; not backfilled (ledger shows $ only and meters closed before the tracking window)."
+  ],
+  "nextsteps": [
+    "Capture usage at bill-entry going forward (a Custom Data field in Yardi or a shared sheet) so no future backfill is ever needed \u2014 the on-bill usage tables make this ~30 seconds per bill.",
+    "Physically check 802 Richmond and Genesis for water leaks \u2014 both show live leak signatures and 802 Richmond carries a city leak notice.",
+    "Confirm the 153 Crown Dr (Danville) electric ramp (600\u219228,200 kWh over 6 months) is expected new-tenant load, not a metering or billing error.",
+    "Standardize gas units: bills arrive in CCF (Danville), Therms (Columbia), and raw Cu.Ft (Charlottesville). Pick one (Therms) and convert on entry so gas is comparable across vendors.",
+    "Two utility vendors (Washington Gas, Central VA Electric Coop) have zero invoices in Yardi \u2014 verify whether any property is actually served by them and billed elsewhere."
+  ]
+}

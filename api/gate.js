@@ -1,45 +1,17 @@
 // Serves the dashboard for authenticated visitors, or redirects to the
-// passcode login screen otherwise. The dashboard's HTML (including all
-// embedded property/usage data) never leaves this function unless the
-// session cookie's signature verifies against the PASSCODE secret.
+// passcode login screen otherwise. The dashboard's HTML never leaves this
+// function unless the session cookie's signature verifies against the
+// PASSCODE secret. Usage/property data itself now lives in Postgres and is
+// fetched client-side from /api/readings and /api/app-state, which sit
+// behind this same passcode check (see lib/auth.js).
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
-
-const COOKIE_NAME = 'tug_session';
-const SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000; // server-side backstop (browser cookie has no Max-Age, so it dies with the browser session too)
-
-function sign(payload, secret) {
-  return crypto.createHmac('sha256', secret).update(payload).digest('hex');
-}
-
-function verifyToken(token, secret) {
-  if (!token || typeof token !== 'string') return false;
-  const dot = token.indexOf('.');
-  if (dot < 0) return false;
-  const payload = token.slice(0, dot);
-  const sig = token.slice(dot + 1);
-
-  const expected = sign(payload, secret);
-  const sigBuf = Buffer.from(sig, 'hex');
-  const expBuf = Buffer.from(expected, 'hex');
-  if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
-    return false;
-  }
-
-  const issuedAt = Number(payload);
-  if (!Number.isFinite(issuedAt)) return false;
-  if (Date.now() - issuedAt > SESSION_MAX_AGE_MS) return false;
-
-  return true;
-}
+const { isAuthed } = require('../lib/auth');
 
 module.exports = (req, res) => {
   res.setHeader('Cache-Control', 'private, no-store');
 
-  const secret = process.env.PASSCODE;
-  const token = req.cookies && req.cookies[COOKIE_NAME];
-  const authed = !!secret && verifyToken(token, secret);
+  const authed = isAuthed(req);
 
   if (!authed) {
     res.statusCode = 302;

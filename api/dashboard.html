@@ -224,6 +224,9 @@ ul.dq li.clk:hover{background:#F7FAFB}
 .yp-chip button{appearance:none;border:0;background:none;color:var(--brand-ink);cursor:pointer;font-size:14px;line-height:1;padding:0 3px}
 .yp-chip button:hover{color:var(--alert)}
 .yp-empty{font-size:12.5px;color:var(--muted);font-style:italic;margin:4px 0 16px}
+.yp-catchup{display:flex;align-items:flex-start;gap:8px;font-size:13px;color:#33414E;font-weight:600;cursor:pointer;margin:0 0 8px}
+.yp-catchup input{margin-top:3px}
+.yp-catchup-hint{background:var(--okbg);border:1px solid var(--brand);border-radius:8px;padding:10px 13px;font-size:12.5px;color:var(--brand-ink);margin:0 0 16px}
 .yp-pvhead{display:flex;justify-content:space-between;align-items:center;margin:0 0 6px}
 .yp-preview{width:100%;min-height:320px;font-family:var(--mono);font-size:11.5px;line-height:1.5;border:1px solid var(--line);border-radius:9px;padding:12px;background:#F7F9FA;white-space:pre;resize:vertical}
 .yp-preview:disabled,.yp-preview[readonly]{color:#33414E}
@@ -824,7 +827,7 @@ function showModal({title,html,input,confirmLabel,danger,onConfirm}){
 }
 
 /* ---------- yardi pull prompt ---------- */
-let ypPeriods=[],ypType='month';
+let ypPeriods=[],ypType='month',ypCatchup=false;
 function ypSortVal(ym){const [y,mo]=ym.split('-').map(Number);return y*12+(mo-1);}
 function ypMonthLabel(ym){const [y,mo]=ym.split('-').map(Number);return new Date(y,mo-1,1).toLocaleString('en-US',{month:'long',year:'numeric'});}
 function ypAddPeriod(label,key,sortVal){
@@ -833,21 +836,43 @@ function ypAddPeriod(label,key,sortVal){
 }
 function ypRemovePeriod(key){ypPeriods=ypPeriods.filter(p=>p.key!==key);ypRenderPeriods();}
 function ypJoinLabels(){const L=ypPeriods.map(p=>p.label);return L.length<=1?(L[0]||''):L.slice(0,-1).join(', ')+', and '+L[L.length-1];}
+function ypHasContent(){return ypPeriods.length>0||ypCatchup;}
 function ypRenderPeriods(){
   const wrap=document.getElementById('ypPeriodsWrap');if(!wrap)return;
   wrap.innerHTML=ypPeriods.length
     ? `<div class="yp-periods">${ypPeriods.map(p=>`<span class="yp-chip">${esc(p.label)}<button data-k="${esc(p.key)}" title="Remove">✕</button></span>`).join('')}</div>`
-    : `<div class="yp-empty">No periods selected yet — add at least one above.</div>`;
+    : `<div class="yp-empty">No periods selected yet — add at least one above, or check "catch me up" below.</div>`;
   wrap.querySelectorAll('button[data-k]').forEach(b=>b.onclick=()=>ypRemovePeriod(b.dataset.k));
-  const ta=document.getElementById('ypPreview');
-  if(ta)ta.value=ypPeriods.length?ypBuildPrompt():'Add at least one month, quarter, or year above to generate the prompt.';
+  ypUpdatePreview();
+}
+function ypUpdatePreview(){
+  const ta=document.getElementById('ypPreview');if(!ta)return;
+  ta.value=ypHasContent()?ypBuildPrompt():'Add at least one month, quarter, or year above — or check "catch me up" — to generate the prompt.';
+}
+function ypTimePeriodLine(){
+  if(ypCatchup&&!ypPeriods.length){
+    return `Whatever's new since my last export — don't work off a fixed calendar period. Before pulling anything, look at my attached dashboard export (or ask me for it now if I didn't attach one) to see what's already loaded, then pull every invoice Yardi has, for the vendors below, that isn't already represented there — regardless of month.`;
+  }
+  if(ypCatchup){
+    return `${ypJoinLabels()} — PLUS catch me up: also check for and pull any invoice Yardi has that isn't already in my attached dashboard export (ask me for it now if I didn't attach one), even if it falls outside the months above.`;
+  }
+  return ypJoinLabels();
 }
 function ypBuildPrompt(){
   return [
     `Pull utility usage data from Yardi Breeze for a given time period across all vendors.`,
     ``,
-    `TIME PERIOD I WANT: ${ypJoinLabels()}`,
+    `TIME PERIOD I WANT: ${ypTimePeriodLine()}`,
     ``,
+    ...(ypCatchup?[
+    `CATCH-UP MODE — READ BEFORE PULLING:`,
+    `I've attached (or will attach in this same message) my dashboard's current CSV export — it`,
+    `lists every property/meter/month/utility I already have loaded. If it's not attached, ask`,
+    `me for it before you start rather than guessing. Treat everything in it as "already have" —`,
+    `only report combinations that aren't already in there. If a bill you open also covers`,
+    `months that are already loaded, don't re-report those, just the new ones.`,
+    ``,
+    ]:[]),
     `OUTPUT FORMAT — read this before you start:`,
     `Your FINAL reply must contain exactly one fenced code block, language "csv", holding ONLY`,
     `the CSV data (header + rows — no other text inside the fence). Use this exact header row:`,
@@ -932,11 +957,12 @@ function ypBuildPrompt(){
     ``,
     `======================= STEP 4 — OUTPUT =======================`,
     `Compile everything into the CSV format specified at the top of this prompt — one row per`,
-    `(property/meter, month, utility). Flag any month ≥ 2× that meter's median as a possible`,
-    `anomaly in your summary (call it out by name, don't put it in the CSV), but distinguish`,
-    `routine seasonal HVAC swings from genuine step-changes. Then, OUTSIDE the code block, give`,
-    `me a one-paragraph summary: which vendors/meters/months you pulled, anything unreadable,`,
-    `and any anomalies.`,
+    `(property/meter, month, utility)${ypCatchup?', excluding anything already in my attached export':''}.`,
+    `Flag any month ≥ 2× that meter's median as a possible anomaly in your summary (call it out`,
+    `by name, don't put it in the CSV), but distinguish routine seasonal HVAC swings from genuine`,
+    `step-changes. Then, OUTSIDE the code block, give me a one-paragraph summary: which`,
+    `vendors/meters/months you pulled${ypCatchup?' (or confirm nothing new was found)':''}, anything`,
+    `unreadable, and any anomalies.`,
   ].join('\n');
 }
 function openYardiPromptModal(){
@@ -973,6 +999,8 @@ function openYardiPromptModal(){
       <button class="btn sub" id="ypAddYear">+ Add year</button>
     </div>
     <div id="ypPeriodsWrap"></div>
+    <label class="yp-catchup"><input type="checkbox" id="ypCatchupBox"${ypCatchup?' checked':''}> Also (or only) catch me up on new invoices — pull anything Yardi has that isn't already loaded in the dashboard yet, regardless of month</label>
+    <div class="yp-catchup-hint" id="ypCatchupHint" style="display:${ypCatchup?'block':'none'}">📎 <b>Don't forget:</b> attach your current dashboard export before you copy this prompt — <b>All Readings tab → Export CSV</b> — so the Claude session can see what's already loaded and only report what's new.</div>
     <div class="yp-pvhead"><span class="eyebrow">Prompt preview</span><button class="btn" id="ypCopy">📋 Copy prompt</button></div>
     <textarea class="yp-preview" id="ypPreview" readonly rows="16"></textarea>`;
   const m=document.getElementById('modal');m.classList.add('on');
@@ -998,8 +1026,13 @@ function openYardiPromptModal(){
     ypAddPeriod('Q'+q+' '+y,'q:'+y+'-'+q,y*12+(q-1)*3);
   };
   card.querySelector('#ypAddYear').onclick=()=>{const y=+card.querySelector('#ypYear').value;if(!y)return;ypAddPeriod('FY '+y,'y:'+y,y*12);};
+  card.querySelector('#ypCatchupBox').onchange=e=>{
+    ypCatchup=e.target.checked;
+    card.querySelector('#ypCatchupHint').style.display=ypCatchup?'block':'none';
+    ypUpdatePreview();
+  };
   card.querySelector('#ypCopy').onclick=()=>{
-    if(!ypPeriods.length){toast('Add at least one period first');return;}
+    if(!ypHasContent()){toast('Add a period, or check "catch me up", first');return;}
     const ta=card.querySelector('#ypPreview');ta.focus();ta.select();
     const done=()=>toast('Prompt copied — paste it into your Claude session');
     if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(ta.value).then(done).catch(()=>{document.execCommand('copy');done();});

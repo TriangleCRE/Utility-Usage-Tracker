@@ -199,6 +199,12 @@ ul.dq li.clk:hover{background:#F7FAFB}
 
 /* tooltip, toast, modal */
 #tip{position:fixed;pointer-events:none;background:#17222E;color:#fff;font-family:var(--mono);font-size:11.5px;padding:5px 8px;border-radius:6px;opacity:0;transition:opacity .1s;z-index:100;white-space:nowrap}
+/* coverage cell hover: unlike #tip, this one holds a clickable source link, so it needs
+   pointer-events and a hover-intent delay (see bindCoverageTips) instead of a plain hover. */
+#covTip{position:fixed;display:none;background:#17222E;color:#fff;font-size:12px;line-height:1.5;padding:8px 11px;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.28);z-index:101;max-width:260px}
+#covTip.show{display:block}
+#covTip .src-link{color:#8FD9A8}
+#covTip .src-link:hover{color:#B7EAC6}
 #toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);background:#17222E;color:#fff;padding:11px 18px;border-radius:10px;font-size:13px;opacity:0;transition:.25s;z-index:80;box-shadow:0 6px 24px rgba(0,0,0,.2)}
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 #modal{position:fixed;inset:0;background:rgba(16,32,45,.42);display:none;align-items:center;justify-content:center;z-index:90}
@@ -311,7 +317,7 @@ footer{color:var(--muted);font-size:12px;padding:20px 0 40px;text-align:center}
   <footer>Triangle Investment Group — Utility Usage Dashboard · usage in native units (kWh, HCF/CCF, Therms, Cu.Ft) · built from City &amp; utility invoice images in Yardi Breeze · <span id="fmeta"></span></footer>
 </div>
 
-<div id="tip"></div><div id="toast"></div>
+<div id="tip"></div><div id="toast"></div><div id="covTip"></div>
 <div id="modal"><div class="modal-card" id="modalCard"></div></div>
 
 <script>
@@ -534,14 +540,39 @@ function updChCount(){const el=document.getElementById('chcount');if(el)el.textC
 /* ---------- coverage ---------- */
 function renderCoverage(){
   const bases=new Map();
+  // Every property's utility meter has exactly one source in practice, but a cell can still
+  // roll up several meters (e.g. two electric meters under one property name), so this tracks
+  // the full set of sources feeding a cell rather than assuming just one.
   for(const s of SERIES){if(!bases.has(s.base))bases.set(s.base,{addr:s.addr});const b=bases.get(s.base);
-    const cur=b[s.util];const st=s.n>=6?2:1;if(!cur||s.n>cur.n)b[s.util]={st:Math.max(st,cur?cur.st:0),n:(cur?cur.n:0)+s.n};else{cur.n+=s.n;cur.st=Math.max(cur.st,st);} }
+    const cur=b[s.util];const st=s.n>=6?2:1;const sources=cur?cur.sources:new Set();sources.add(s.source||'Yardi');
+    if(!cur||s.n>cur.n)b[s.util]={st:Math.max(st,cur?cur.st:0),n:(cur?cur.n:0)+s.n,sources};else{cur.n+=s.n;cur.st=Math.max(cur.st,st);cur.sources=sources;} }
   const rows=[...bases.entries()].sort((a,b)=>a[0].localeCompare(b[0]));
   const cell=(o,col)=>{if(!o)return `<span class="cel none"><span class="d" style="background:transparent;border:1px solid var(--line)"></span>—</span>`;
-    return `<span class="cel"><span class="d" style="${o.st===2?'background:'+col:'background:transparent;border:2px solid '+col}"></span>${o.n}</span>`;};
+    return `<span class="cel" data-sources="${esc([...o.sources].join('|'))}"><span class="d" style="${o.st===2?'background:'+col:'background:transparent;border:2px solid '+col}"></span>${o.n}</span>`;};
   let html=`<thead><tr><th>Property</th><th class="c">Electric</th><th class="c">Water</th><th class="c">Gas</th></tr></thead><tbody>`;
   for(const [name,b] of rows){html+=`<tr class="clk" data-base="${esc(name)}"><td class="pn">${esc(name)}</td>`+['Electric','Water','Gas'].map(u=>`<td class="c">${cell(b[u],U_COLOR[u])}</td>`).join('')+`</tr>`;}
   document.getElementById('covtable').innerHTML=html+'</tbody>';
+  bindCoverageTips();
+}
+// Hover a coverage cell's reading count to see which system(s) its readings come from, each
+// linked to that system's login. Unlike the plain #tip tooltip, this one holds a real <a> the
+// visitor needs to move into and click, so hiding it is on a short delay (cancelled if the
+// pointer lands on the tip itself) instead of firing immediately on mouseleave.
+let covTipHideT=null;
+function bindCoverageTips(){
+  const tip=document.getElementById('covTip');
+  tip.onmouseenter=()=>clearTimeout(covTipHideT);
+  tip.onmouseleave=()=>{covTipHideT=setTimeout(()=>tip.classList.remove('show'),200);};
+  document.querySelectorAll('#covtable .cel[data-sources]').forEach(c=>{
+    const names=c.dataset.sources.split('|').filter(Boolean);
+    if(!names.length)return;
+    const place=e=>{tip.style.left=Math.min(e.clientX+12,window.innerWidth-272)+'px';tip.style.top=(e.clientY+16)+'px';};
+    c.onmouseenter=e=>{clearTimeout(covTipHideT);
+      tip.innerHTML=(names.length>1?'Sources: ':'Source: ')+names.map(sourceLink).join(', ');
+      tip.classList.add('show');place(e);};
+    c.onmousemove=place;
+    c.onmouseleave=()=>{covTipHideT=setTimeout(()=>tip.classList.remove('show'),200);};
+  });
 }
 
 /* ---------- readings table ---------- */

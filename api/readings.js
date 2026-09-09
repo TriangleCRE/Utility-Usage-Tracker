@@ -15,7 +15,7 @@ const { getPool } = require('../lib/db');
 const { ensureReady } = require('../lib/schema');
 const { isAuthed } = require('../lib/auth');
 
-const FIELDS = ['prop', 'addr', 'meter', 'util', 'unit', 'vendor', 'ym', 'val'];
+const FIELDS = ['prop', 'addr', 'meter', 'util', 'unit', 'vendor', 'ym', 'val', 'source'];
 
 function readBody(req) {
   if (req.body && typeof req.body === 'object') return req.body;
@@ -48,14 +48,15 @@ function rowToRecord(row) {
     vendor: row.vendor,
     ym: row.ym,
     val: Number(row.val),
+    source: row.source,
   };
 }
 
 async function insertOne(client, r) {
   const { rows } = await client.query(
-    `INSERT INTO readings (prop, addr, meter, util, unit, vendor, ym, val)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-    [r.prop, r.addr || '', r.meter || '', r.util, r.unit, r.vendor || '', r.ym, Number(r.val)]
+    `INSERT INTO readings (prop, addr, meter, util, unit, vendor, ym, val, source)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+    [r.prop, r.addr || '', r.meter || '', r.util, r.unit, r.vendor || '', r.ym, Number(r.val), r.source || 'Yardi']
   );
   return rowToRecord(rows[0]);
 }

@@ -149,6 +149,8 @@ tr.rowflash td{animation:rowflash 1.6s ease-out}
 .utcell{display:inline-flex;align-items:center;gap:7px}
 .pn-link{color:var(--brand-ink);cursor:pointer;font-weight:600}
 .pn-link:hover{text-decoration:underline}
+.src-link{color:var(--brand-ink);text-decoration:none;font-weight:600}
+.src-link:hover{text-decoration:underline}
 .editv{font-family:var(--mono);cursor:text;border-radius:5px;padding:1px 5px;display:inline-block;min-width:44px;text-align:right}
 .editv:hover{background:#EAF4EE;box-shadow:inset 0 0 0 1px var(--brand)}
 .editinp{width:78px;text-align:right;padding:2px 5px;font-family:var(--mono)}
@@ -318,6 +320,19 @@ function getCSS(v){return getComputedStyle(document.documentElement).getProperty
 const U_COLOR = {Electric:getCSS('--elec'),Water:getCSS('--water'),Gas:getCSS('--gas')};
 const LOWBASE = {kWh:300,HCF:8,CCF:15,Therms:30,'Cu.Ft':300};
 const ABSMIN  = {kWh:400,HCF:10,CCF:20,Therms:40,'Cu.Ft':300};
+// The system each meter's readings are pulled from. Every property's utility meter has exactly
+// one source for all its tenants (e.g. all Center - Pantops water readings come from Next
+// Century), so this lives on the reading row but is really a property/utility-level fact.
+const SOURCE_LINKS = {
+  'Yardi': 'https://100115409.breeze.cafe/content/#/app/dashboard',
+  'Prism': 'https://connect.buildingengines.com/',
+  'Next Century': 'https://app.nextcenturymeters.com/',
+};
+function sourceLink(name){
+  if(!name)return '';
+  const url=SOURCE_LINKS[name];
+  return url?`<a class="src-link" href="${esc(url)}" target="_blank" rel="noopener">${esc(name)}</a>`:esc(name);
+}
 
 /* ---------- server state (readings + takeaways/resolved/notes live in Postgres, see /api) ---------- */
 let STATE={resolved:{},notes:{}};
@@ -357,7 +372,7 @@ let DATA=buildDATA();
 
 function buildSeries(rows){
   const map=new Map();
-  for(const r of rows){const k=seriesKey(r);if(!map.has(k))map.set(k,{key:k,prop:r.prop,base:baseName(r.prop),addr:r.addr,util:r.util,unit:r.unit,vendor:r.vendor,meter:r.meter,pts:[]});map.get(k).pts.push({ym:r.ym,val:r.val});}
+  for(const r of rows){const k=seriesKey(r);if(!map.has(k))map.set(k,{key:k,prop:r.prop,base:baseName(r.prop),addr:r.addr,util:r.util,unit:r.unit,vendor:r.vendor,meter:r.meter,source:r.source,pts:[]});map.get(k).pts.push({ym:r.ym,val:r.val});}
   const globalMax=Math.max(...rows.map(r=>monIdx(r.ym)),0);
   const series=[...map.values()];
   for(const s of series){
@@ -415,7 +430,7 @@ function spikeReason(s,r){const ratio=s.median>0?(r.val/s.median):Infinity;const
 function showChartModal(s){
   if(!s)return;const card=document.getElementById('modalCard');card.classList.add('wide');
   card.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:4px">
-      <div><h3>${esc(s.prop)} ${badgeFor(s)}</h3><div class="hint">${esc(s.addr||'')} · ${esc(s.vendor)} · ${s.unit}</div></div>
+      <div><h3>${esc(s.prop)} ${badgeFor(s)}</h3><div class="hint">${esc(s.addr||'')} · ${esc(s.vendor)} · ${s.unit} · ${sourceLink(s.source)}</div></div>
       <button class="mini" id="chartClose">Close ✕</button></div>
     <div style="margin:4px 0">${chartSVG(s,920,420,{fs:13,lw:2.6,r:3.4,padL:60,nx:7})}</div>
     <div style="display:flex;gap:22px;font-family:var(--mono);font-size:12.5px;color:var(--muted);flex-wrap:wrap"><span>median ${fmt(s.median)}</span><span>peak ${fmt(s.peak)} · ${monLabel(s.peakYm)}</span><span>latest ${fmt(s.latest)} · ${monLabel(s.last)}</span><span>${s.n} readings</span>${s.anom.size?`<span style="color:var(--alert)">⚑ ${s.anom.size} flagged</span>`:''}</div>`;
@@ -531,16 +546,16 @@ function renderCoverage(){
 
 /* ---------- readings table ---------- */
 let sortKey='prop',sortDir=1,tblFilter={util:new Set(['Electric','Water','Gas']),q:''};
-function tblRows(){let rows=DATA.filter(r=>tblFilter.util.has(r.util)&&(!tblFilter.q||(r.prop+' '+r.addr+' '+r.vendor).toLowerCase().includes(tblFilter.q)));
+function tblRows(){let rows=DATA.filter(r=>tblFilter.util.has(r.util)&&(!tblFilter.q||(r.prop+' '+r.addr+' '+r.vendor+' '+(r.source||'')).toLowerCase().includes(tblFilter.q)));
   rows.sort((a,b)=>{let x=a[sortKey],y=b[sortKey];if(sortKey==='val'){x=+x;y=+y;}if(sortKey==='ym'){x=monIdx(a.ym);y=monIdx(b.ym);}return(x>y?1:x<y?-1:0)*sortDir;});return rows;}
 function valCell(r){return `<span class="editv" data-id="${r.id}" tabindex="0">${fmt(r.val)}</span>`;}
 function renderTable(){
-  const cols=[['prop','Property'],['addr','Address'],['util','Utility'],['unit','Unit'],['vendor','Vendor'],['ym','Month'],['val','Value'],['flag','Flag']];
+  const cols=[['prop','Property'],['addr','Address'],['util','Utility'],['unit','Unit'],['vendor','Vendor'],['source','Source'],['ym','Month'],['val','Value'],['flag','Flag']];
   const rows=tblRows();window._tblRows=rows;
   document.querySelector('#tbl thead').innerHTML='<tr>'+cols.map(c=>`<th data-k="${c[0]}">${c[1]} <span class="ar">${sortKey===c[0]?(sortDir>0?'▲':'▼'):''}</span></th>`).join('')+'</tr>';
   document.querySelector('#tbl tbody').innerHTML=rows.map(r=>{const s=SERIES.find(x=>x.key===seriesKey(r));const fl=s&&s.anom.has(r.ym)?`<span class="flagchip" style="font-size:15px" data-tip="${esc(spikeReason(s,r))}" title="${esc(spikeReason(s,r))}">⚑ <span style="font-size:11px;font-weight:700">spike</span></span>`:'';
     return `<tr><td><span class="pn-link" data-base="${esc(baseName(r.prop))}">${esc(r.prop)}</span></td><td>${esc(r.addr||'')}</td>
-    <td><span class="utcell"><span class="pill" style="background:${U_COLOR[r.util]}"></span>${r.util}</span></td><td>${r.unit}</td><td>${esc(r.vendor)}</td>
+    <td><span class="utcell"><span class="pill" style="background:${U_COLOR[r.util]}"></span>${r.util}</span></td><td>${r.unit}</td><td>${esc(r.vendor)}</td><td>${sourceLink(r.source)}</td>
     <td class="mono">${monLabel(r.ym)}</td><td class="num">${valCell(r)}</td><td>${fl}</td></tr>`;}).join('');
   document.getElementById('rowcount').textContent=rows.length.toLocaleString()+' of '+DATA.length.toLocaleString()+' readings shown';
   document.querySelectorAll('#tbl th').forEach(th=>th.onclick=()=>{const k=th.dataset.k;if(k==='flag')return;if(sortKey===k)sortDir*=-1;else{sortKey=k;sortDir=1;}renderTable();});
@@ -654,9 +669,9 @@ function openProperty(base){
   html+=`<div class="sec-h"><h2>Team notes</h2><span class="note">Shared notes for this property — visible to everyone</span><span class="spacer"></span><span class="saveflash" id="pvNoteFlash">Saved ✓</span></div>
     <textarea class="notesbox" id="pvNotes" placeholder="Add notes for the team — e.g. 'plumber checked 802 Richmond 5/12, no visible leak', 'tenant moved out Feb', 'confirm 153 Crown load with Danville'…">${esc(noteVal)}</textarea>`;
   html+=`<div class="sec-h"><h2>Usage by meter</h2><span class="note">Each service point over time · click a chart to expand it</span></div><div class="charts">`+
-    ser.map(s=>`<div class="card ch expandable" data-skey="${esc(s.key)}" title="Click to expand"><div class="top"><div><span class="nm">${esc(s.prop)}${badgeFor(s)}</span><div class="ad">${esc(s.vendor)}</div></div><div class="u">${s.unit} ⤢</div></div>${chartSVG(s,360,140)}<div class="foot"><span>median ${fmt(s.median)}</span><span>peak ${fmt(s.peak)} · ${monLabel(s.peakYm)}</span><span>${s.n} reads</span></div></div>`).join('')+`</div>`;
+    ser.map(s=>`<div class="card ch expandable" data-skey="${esc(s.key)}" title="Click to expand"><div class="top"><div><span class="nm">${esc(s.prop)}${badgeFor(s)}</span><div class="ad">${esc(s.vendor)} · ${sourceLink(s.source)}</div></div><div class="u">${s.unit} ⤢</div></div>${chartSVG(s,360,140)}<div class="foot"><span>median ${fmt(s.median)}</span><span>peak ${fmt(s.peak)} · ${monLabel(s.peakYm)}</span><span>${s.n} reads</span></div></div>`).join('')+`</div>`;
   html+=`<div class="sec-h"><h2>Readings</h2><span class="note">Click a value to edit — updates every chart and the reading log</span></div>
-    <div class="tablewrap"><table class="data"><thead><tr><th>Meter</th><th>Utility</th><th>Unit</th><th>Month</th><th>Value</th><th>Flag</th></tr></thead><tbody>`+
+    <div class="tablewrap"><table class="data"><thead><tr><th>Meter</th><th>Utility</th><th>Unit</th><th>Source</th><th>Month</th><th>Value</th><th>Flag</th></tr></thead><tbody>`+
     recs.map(r=>{
       const s=SERIES.find(x=>x.key===seriesKey(r));
       // Every flag this exact row carries gets its own icon: a spike/leak reading is
@@ -673,7 +688,7 @@ function openProperty(base){
       }
       const fl=kinds.map(kind=>{const tip=flagDescribe(kind,s,r.ym);
         return `<span class="flagchip act" data-kind="${kind}" data-skey="${esc(s.key)}" data-ym="${esc(r.ym)}" data-tip="${esc(tip)}" title="${esc(tip)}">⚑</span>`;}).join(' ');
-      return `<tr data-rk="${esc(recKey(r))}"><td>${esc(r.prop)}</td><td><span class="utcell"><span class="pill" style="background:${U_COLOR[r.util]}"></span>${r.util}</span></td><td>${r.unit}</td><td class="mono">${monLabel(r.ym)}</td><td class="num">${valCell(r)}</td><td>${fl}</td></tr>`;}).join('')+
+      return `<tr data-rk="${esc(recKey(r))}"><td>${esc(r.prop)}</td><td><span class="utcell"><span class="pill" style="background:${U_COLOR[r.util]}"></span>${r.util}</span></td><td>${r.unit}</td><td>${sourceLink(r.source)}</td><td class="mono">${monLabel(r.ym)}</td><td class="num">${valCell(r)}</td><td>${fl}</td></tr>`;}).join('')+
     `</tbody></table></div>`;
   const pv=document.getElementById('propview');pv.innerHTML=html;
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('on'));
@@ -756,14 +771,14 @@ document.addEventListener('click',e=>{const fc=e.target.closest('.flagchip');if(
 }});
 
 /* ---------- import / export ---------- */
-function toCSV(rows){const head=['Property','Address','Meter','Utility','Unit','Vendor','Month','Value'];const q=v=>{v=(v==null?'':String(v));return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};return head.join(',')+'\n'+rows.map(r=>[r.prop,r.addr,r.meter,r.util,r.unit,r.vendor,r.ym,r.val].map(q).join(',')).join('\n');}
+function toCSV(rows){const head=['Property','Address','Meter','Utility','Unit','Vendor','Source','Month','Value'];const q=v=>{v=(v==null?'':String(v));return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};return head.join(',')+'\n'+rows.map(r=>[r.prop,r.addr,r.meter,r.util,r.unit,r.vendor,r.source,r.ym,r.val].map(q).join(',')).join('\n');}
 function download(name,text){const b=new Blob([text],{type:'text/csv'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=name;a.click();URL.revokeObjectURL(u);}
 function parseCSV(text){const lines=text.replace(/\r/g,'').split('\n').filter(l=>l.trim());if(!lines.length)return[];
   const split=l=>{const o=[];let c='',q=false;for(let i=0;i<l.length;i++){const ch=l[i];if(q){if(ch==='"'){if(l[i+1]==='"'){c+='"';i++;}else q=false;}else c+=ch;}else{if(ch===',')  {o.push(c);c='';}else if(ch==='"')q=true;else c+=ch;}}o.push(c);return o;};
   const H=split(lines[0]).map(h=>h.trim().toLowerCase());const idx=n=>H.findIndex(h=>h.replace(/[^a-z]/g,'').startsWith(n));
-  const iP=idx('property'),iA=idx('address'),iM=idx('meter'),iU=idx('utility'),iN=idx('unit'),iV=idx('vendor'),iD=H.findIndex(h=>/month|period|date/.test(h)),iVal=H.findIndex(h=>/value|usage|reading|kwh|hcf|ccf|therm|cu/.test(h));
+  const iP=idx('property'),iA=idx('address'),iM=idx('meter'),iU=idx('utility'),iN=idx('unit'),iV=idx('vendor'),iS=idx('source'),iD=H.findIndex(h=>/month|period|date/.test(h)),iVal=H.findIndex(h=>/value|usage|reading|kwh|hcf|ccf|therm|cu/.test(h));
   const out=[];for(let i=1;i<lines.length;i++){const c=split(lines[i]);if(!c[iP])continue;let ym=(c[iD]||'').trim();const dm=ym.match(/(\d{4})[-\/](\d{1,2})/);if(dm)ym=dm[1]+'-'+dm[2].padStart(2,'0');else{const d2=ym.match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})/);if(d2){let y=d2[3];if(y.length===2)y='20'+y;ym=y+'-'+d2[1].padStart(2,'0');}}const val=parseFloat((c[iVal]||'').replace(/[^0-9.\-]/g,''));if(!ym||isNaN(val))continue;
-    out.push({prop:c[iP].trim(),addr:(c[iA]||'').trim(),meter:(c[iM]||'').trim(),util:(c[iU]||'').trim()||'Electric',unit:(c[iN]||'').trim()||'kWh',vendor:(c[iV]||'').trim()||'(imported)',ym,val});}
+    out.push({prop:c[iP].trim(),addr:(c[iA]||'').trim(),meter:(c[iM]||'').trim(),util:(c[iU]||'').trim()||'Electric',unit:(c[iN]||'').trim()||'kWh',vendor:(c[iV]||'').trim()||'(imported)',source:(c[iS]||'').trim()||'Yardi',ym,val});}
   return out;}
 
 /* ---------- add reading ---------- */
@@ -783,6 +798,7 @@ function addReadingModal(base){
         ${lbl('Unit',`<input id="arUnit" list="arUnits" type="text" style="width:100%" placeholder="kWh / HCF / Therms"><datalist id="arUnits"><option>kWh</option><option>HCF</option><option>CCF</option><option>Therms</option><option>Cu.Ft</option></datalist>`)}
         ${lbl('Meter / acct',`<input id="arMeter" type="text" style="width:100%">`)}
         ${lbl('Vendor',`<input id="arVendor" type="text" style="width:100%">`)}
+        ${lbl('Source',`<select id="arSource" style="width:100%">${Object.keys(SOURCE_LINKS).map(n=>`<option>${esc(n)}</option>`).join('')}</select>`)}
       </div></div>
       ${lbl('Month',`<input id="arMonth" type="month" style="width:100%" value="${monthNext}">`)}
       ${lbl('Value',`<input id="arVal" type="number" step="any" style="width:100%" placeholder="e.g. 6">`)}
@@ -796,9 +812,9 @@ function addReadingModal(base){
     const ym=card.querySelector('#arMonth').value;const val=parseFloat(card.querySelector('#arVal').value);
     if(!ym||isNaN(val)){toast('Enter a month and a numeric value');return;}
     let rec;const sel=card.querySelector('#arSeries');
-    if(base&&sel&&sel.value!=='new'){const s=baseSeries[+sel.value];rec={prop:s.prop,addr:s.addr,meter:s.meter,util:s.util,unit:s.unit,vendor:s.vendor,ym,val};}
+    if(base&&sel&&sel.value!=='new'){const s=baseSeries[+sel.value];rec={prop:s.prop,addr:s.addr,meter:s.meter,util:s.util,unit:s.unit,vendor:s.vendor,source:s.source||'Yardi',ym,val};}
     else{const prop=base||(card.querySelector('#arProp').value||'').trim();if(!prop){toast('Enter a property name');return;}
-      rec={prop,addr:(card.querySelector('#arAddr').value||'').trim(),meter:(card.querySelector('#arMeter').value||'').trim(),util:card.querySelector('#arUtil').value,unit:(card.querySelector('#arUnit').value||'').trim()||'kWh',vendor:(card.querySelector('#arVendor').value||'').trim()||'(manual)',ym,val};}
+      rec={prop,addr:(card.querySelector('#arAddr').value||'').trim(),meter:(card.querySelector('#arMeter').value||'').trim(),util:card.querySelector('#arUtil').value,unit:(card.querySelector('#arUnit').value||'').trim()||'kWh',vendor:(card.querySelector('#arVendor').value||'').trim()||'(manual)',source:card.querySelector('#arSource').value,ym,val};}
     const okBtn=card.querySelector('#modalOk');okBtn.disabled=true;okBtn.textContent='Adding…';
     try{
       const data=await createReading(rec);
@@ -1059,7 +1075,7 @@ document.getElementById('showResD').onchange=renderFlagsNotes;
 document.getElementById('btnAdd').onclick=()=>addReadingModal(null);
 document.getElementById('addTk').onclick=()=>takeawayModal(null);
 document.getElementById('btnExport').onclick=()=>{download('triangle_utility_readings.csv',toCSV(window._tblRows||DATA));toast('Exported '+(window._tblRows||DATA).length.toLocaleString()+' readings');};
-document.getElementById('btnTemplate').onclick=()=>{download('utility_readings_template.csv','Property,Address,Meter,Utility,Unit,Vendor,Month,Value\nCenter - Heritage building,2815 N Augusta St,15308-63629,Water,HCF,City of Staunton,2026-09,6\n');toast('Template downloaded');};
+document.getElementById('btnTemplate').onclick=()=>{download('utility_readings_template.csv','Property,Address,Meter,Utility,Unit,Vendor,Source,Month,Value\nCenter - Heritage building,2815 N Augusta St,15308-63629,Water,HCF,City of Staunton,Yardi,2026-09,6\n');toast('Template downloaded');};
 document.getElementById('importFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();rd.onload=async()=>{const extra=parseCSV(rd.result);if(!extra.length){toast('No valid rows found — check the format');return;}
   try{
     const data=await createReadingsBulk(extra);

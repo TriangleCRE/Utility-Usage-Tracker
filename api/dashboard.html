@@ -305,7 +305,7 @@ footer{color:var(--muted);font-size:12px;padding:20px 0 40px;text-align:center}
     <div class="card"><ul class="dq" id="dqlist"></ul></div>
     <div class="sec-h"><h2>Why the numbers look the way they do</h2><span class="note">Context so nothing gets misread</span></div>
     <div class="qgrid" id="quality"></div>
-    <div class="sec-h"><h2>Reconciliation notes</h2><span class="note">Label fixes and account quirks recorded during the build</span></div>
+    <div class="sec-h"><h2>Reconciliation notes</h2><span class="note">Label fixes and account quirks recorded during the build</span><span class="spacer"></span><button class="mini" id="editRecon">Edit</button></div>
     <div class="card recon" id="recon" style="padding:8px 6px"></div>
     <div class="sec-h"><h2>Recommended next steps</h2><span class="note">To keep this clean and prevent future gaps</span></div>
     <div class="card"><ol class="steps" id="nextsteps"></ol></div>
@@ -357,6 +357,7 @@ function deleteReadings(ids){return apiFetch('/api/readings?ids='+ids.join(','),
 function persistResolved(){saveAppState('resolved',STATE.resolved).catch(err=>toast('Failed to save — '+err.message));}
 function persistNotes(){return saveAppState('notes',STATE.notes);}
 function persistTakeaways(){return saveAppState('takeaways',PAYLOAD.takeaways);}
+function persistRecon(){return saveAppState('recon',PAYLOAD.recon);}
 
 /* ---------- helpers ---------- */
 const fmt = n => (n==null||isNaN(n))?'—':(Math.abs(n)>=1000?Math.round(n).toLocaleString():(Math.round(n*10)/10).toLocaleString());
@@ -494,6 +495,23 @@ function takeawayModal(i){
   setTimeout(()=>card.querySelector('#tkTitle').focus(),30);
   card.querySelector('#modalOk').onclick=()=>{const t={util:card.querySelector('#tkUtil').value,title:card.querySelector('#tkTitle').value.trim(),body:card.querySelector('#tkBody').value.trim()};
     if(!t.title&&!t.body){toast('Add a title or body');return;}const A=getTakeaways().slice();if(i==null)A.push(t);else A[i]=t;PAYLOAD.takeaways=A;close();renderTakeaways();toast(i==null?'Takeaway added':'Takeaway saved');persistTakeaways().catch(err=>toast('Failed to save — '+err.message));};
+}
+// The first line renders as the section's small heading (see renderFlagsNotes); every line
+// after that is one reconciliation note. One line per textarea row, in and out.
+function reconModal(){
+  const card=document.getElementById('modalCard');card.classList.remove('wide');
+  card.innerHTML=`<h3>Edit reconciliation notes</h3>
+    <p>First line is the section heading; every line after that is one note.</p>
+    <textarea id="reconBody" style="width:100%;min-height:280px;font:inherit;font-size:12.5px;border:1px solid var(--line);border-radius:8px;padding:9px">${esc(PAYLOAD.recon.join('\n'))}</textarea>
+    <div class="modal-actions"><button class="btn sub" id="modalCancel">Cancel</button><button class="btn" id="modalOk">Save</button></div>`;
+  const m=document.getElementById('modal');m.classList.add('on');const close=()=>m.classList.remove('on');
+  card.querySelector('#modalCancel').onclick=close;m.onclick=e=>{if(e.target===m)close();};
+  setTimeout(()=>card.querySelector('#reconBody').focus(),30);
+  card.querySelector('#modalOk').onclick=()=>{
+    const lines=card.querySelector('#reconBody').value.split('\n').map(l=>l.trim()).filter(Boolean);
+    PAYLOAD.recon=lines;close();renderFlagsNotes();toast('Reconciliation notes saved');
+    persistRecon().catch(err=>toast('Failed to save — '+err.message));
+  };
 }
 
 /* ---------- attention ---------- */
@@ -1105,6 +1123,7 @@ document.getElementById('showResA').onchange=renderAttention;
 document.getElementById('showResD').onchange=renderFlagsNotes;
 document.getElementById('btnAdd').onclick=()=>addReadingModal(null);
 document.getElementById('addTk').onclick=()=>takeawayModal(null);
+document.getElementById('editRecon').onclick=()=>reconModal();
 document.getElementById('btnExport').onclick=()=>{download('triangle_utility_readings.csv',toCSV(window._tblRows||DATA));toast('Exported '+(window._tblRows||DATA).length.toLocaleString()+' readings');};
 document.getElementById('btnTemplate').onclick=()=>{download('utility_readings_template.csv','Property,Address,Meter,Utility,Unit,Vendor,Source,Month,Value\nCenter - Heritage building,2815 N Augusta St,15308-63629,Water,HCF,City of Staunton,Yardi,2026-09,6\n');toast('Template downloaded');};
 document.getElementById('importFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();rd.onload=async()=>{const extra=parseCSV(rd.result);if(!extra.length){toast('No valid rows found — check the format');return;}

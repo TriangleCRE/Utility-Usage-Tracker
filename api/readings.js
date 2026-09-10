@@ -14,6 +14,7 @@
 const { getPool } = require('../lib/db');
 const { ensureReady } = require('../lib/schema');
 const { isAuthed } = require('../lib/auth');
+const { redactDeep } = require('../lib/redact');
 
 const FIELDS = ['prop', 'addr', 'meter', 'util', 'unit', 'vendor', 'ym', 'val', 'source'];
 
@@ -91,7 +92,9 @@ module.exports = async (req, res) => {
 
     if (req.method === 'POST') {
       const body = readBody(req);
-      const list = Array.isArray(body.records) ? body.records : [body];
+      // prop/addr/meter/vendor are all free text someone typed in (or pasted via CSV import) —
+      // scrub before it's ever validated or written, not just on the way back out.
+      const list = (Array.isArray(body.records) ? body.records : [body]).map(redactDeep);
       if (!list.length) {
         res.statusCode = 400;
         res.end(JSON.stringify({ ok: false, error: 'No records provided' }));
@@ -129,7 +132,7 @@ module.exports = async (req, res) => {
         res.end(JSON.stringify({ ok: false, error: 'A numeric ?id= is required' }));
         return;
       }
-      const body = readBody(req);
+      const body = redactDeep(readBody(req));
       const sets = [];
       const values = [];
       for (const f of FIELDS) {

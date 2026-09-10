@@ -301,11 +301,11 @@ footer{color:var(--muted);font-size:12px;padding:20px 0 40px;text-align:center}
   </section>
 
   <section class="panel" id="flags">
-    <div class="sec-h"><h2>Data-quality flags</h2><span class="note">Where reporting is thin, missing, or a meter has stopped — auto-detected · click to open · resolve to dismiss</span><span class="spacer"></span><label class="hint"><input type="checkbox" id="showResD"> show resolved</label></div>
+    <div class="sec-h"><h2>Data-quality flags</h2><span class="note">Where reporting is thin, missing, or a meter has stopped — auto-detected · click to open · resolve to dismiss</span><span class="spacer"></span><input type="search" id="dqSearch" placeholder="Search flags…"><label class="hint"><input type="checkbox" id="showResD"> show resolved</label></div>
     <div class="card"><ul class="dq" id="dqlist"></ul></div>
     <div class="sec-h"><h2>Why the numbers look the way they do</h2><span class="note">Context so nothing gets misread</span></div>
     <div class="qgrid" id="quality"></div>
-    <div class="sec-h"><h2>Reconciliation notes</h2><span class="note">Label fixes and account quirks recorded during the build</span><span class="spacer"></span><button class="mini" id="editRecon">Edit</button></div>
+    <div class="sec-h"><h2>Reconciliation notes</h2><span class="note">Label fixes and account quirks recorded during the build</span><span class="spacer"></span><input type="search" id="reconSearch" placeholder="Search notes…"><button class="mini" id="editRecon">Edit</button></div>
     <div class="card recon" id="recon" style="padding:8px 6px"></div>
     <div class="sec-h"><h2>Recommended next steps</h2><span class="note">To keep this clean and prevent future gaps</span></div>
     <div class="card"><ol class="steps" id="nextsteps"></ol></div>
@@ -627,15 +627,25 @@ function dqItems(){
   const order={alert:0,warn:1};out.sort((a,b)=>order[a.sev]-order[b.sev]);return out;
 }
 function renderFlagsNotes(){
-  const showRes=document.getElementById('showResD').checked;const items=dqItems();
+  const showRes=document.getElementById('showResD').checked;
+  const dqQ=document.getElementById('dqSearch').value.trim().toLowerCase();
+  const allItems=dqItems();
+  const items=allItems.filter(d=>!dqQ||(d.base+' '+d.t+' '+d.d).toLowerCase().includes(dqQ));
   const html=items.map(d=>{const res=STATE.resolved[d.id];if(res&&!showRes)return '';
     return `<li class="clk ${res?'resolved-row':''}" data-base="${esc(d.base)}"><span class="sevtag sev-${d.sev}">${d.lab}</span>
       <div><b>${d.t}</b><br><span class="hint">${d.d}</span></div>
       <button class="mini ${res?'done':''}" data-res="${esc(d.id)}">${res?'✓ Resolved':'Resolve'}</button></li>`;}).join('');
   const n=items.filter(d=>STATE.resolved[d.id]).length;
-  document.getElementById('dqlist').innerHTML=(html||'<li><span class="hint">No data-quality issues.</span></li>')+(n&&!showRes?`<li><span class="hint">${n} resolved item(s) hidden.</span></li>`:'');
+  const dqEmpty=dqQ?`No flags match “${esc(dqQ)}”.`:'No data-quality issues.';
+  document.getElementById('dqlist').innerHTML=(html||`<li><span class="hint">${dqEmpty}</span></li>`)+(n&&!showRes?`<li><span class="hint">${n} resolved item(s) hidden.</span></li>`:'');
   document.getElementById('quality').innerHTML=PAYLOAD.quality.map(q=>`<div class="card q ${q.sev}"><h3>${esc(q.title)}</h3><p>${esc(q.body)}</p></div>`).join('');
-  document.getElementById('recon').innerHTML=PAYLOAD.recon.map((n,i)=>i===0?`<h3 style="font-size:13px;margin:6px 10px 2px">${esc(n)}</h3>`:`<div>${esc(n)}</div>`).join('');
+  // Recon's first line is always the section heading (see reconModal) and stays visible
+  // regardless of the search — only the notes after it get filtered.
+  const reconQ=document.getElementById('reconSearch').value.trim().toLowerCase();
+  const heading=PAYLOAD.recon[0]||'';
+  const noteLines=PAYLOAD.recon.slice(1).filter(n=>!reconQ||n.toLowerCase().includes(reconQ));
+  document.getElementById('recon').innerHTML=`<h3 style="font-size:13px;margin:6px 10px 2px">${esc(heading)}</h3>`+
+    (noteLines.length?noteLines.map(n=>`<div>${esc(n)}</div>`).join(''):`<div class="hint" style="padding:4px 10px">${reconQ?`No notes match “${esc(reconQ)}”.`:'No notes yet.'}</div>`);
   document.getElementById('nextsteps').innerHTML=PAYLOAD.nextsteps.map(s=>`<li>${esc(s)}</li>`).join('');
 }
 function ymFromIdx(i){return(Math.floor(i/12))+'-'+String(i%12+1).padStart(2,'0');}
@@ -1121,6 +1131,8 @@ document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>showTab(t.dataset.p))
 document.getElementById('homeTitle').onclick=()=>showTab('overview');
 document.getElementById('showResA').onchange=renderAttention;
 document.getElementById('showResD').onchange=renderFlagsNotes;
+document.getElementById('dqSearch').oninput=renderFlagsNotes;
+document.getElementById('reconSearch').oninput=renderFlagsNotes;
 document.getElementById('btnAdd').onclick=()=>addReadingModal(null);
 document.getElementById('addTk').onclick=()=>takeawayModal(null);
 document.getElementById('editRecon').onclick=()=>reconModal();

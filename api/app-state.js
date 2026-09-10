@@ -11,6 +11,7 @@
 const { getPool } = require('../lib/db');
 const { ensureReady, DEFAULT_APP_STATE } = require('../lib/schema');
 const { isAuthed } = require('../lib/auth');
+const { redactDeep } = require('../lib/redact');
 
 const ALLOWED_KEYS = new Set(Object.keys(DEFAULT_APP_STATE));
 
@@ -66,13 +67,16 @@ module.exports = async (req, res) => {
         res.end(JSON.stringify({ ok: false, error: 'value is required' }));
         return;
       }
+      // Takeaways, notes, and resolved-flag notes are all free text someone typed into a
+      // modal — scrub before it's ever written, not just on the way back out.
+      const cleanValue = redactDeep(value);
       await pool.query(
         `INSERT INTO app_state (key, value) VALUES ($1, $2)
          ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
-        [key, JSON.stringify(value)]
+        [key, JSON.stringify(cleanValue)]
       );
       res.statusCode = 200;
-      res.end(JSON.stringify({ ok: true, key, value }));
+      res.end(JSON.stringify({ ok: true, key, value: cleanValue }));
       return;
     }
 
